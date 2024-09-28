@@ -5,6 +5,9 @@ TARGET := sort
 INCLUDE_DIR := include
 SOURCE_DIR := source
 BUILD_DIR := build
+TEST_DIR := tests
+TESTFILE_SUFFIX := _test
+BUILD_TEST_DIR = $(BUILD_DIR)/tests
 DEP_DIR := $(BUILD_DIR)/dep
 
 ### compiler and flags ###
@@ -24,6 +27,9 @@ OBJECTS := $(patsubst $(SOURCE_DIR)/%.c, $(BUILD_DIR)/%.o, $(SOURCES))
 DEPENDENCIES := $(patsubst %.o, $(BUILD_DIR)/%.d, $(OBJECTS))
 # allow makefile to use generated dependency files
 -include $(DEPENDENCIES)
+TESTS := $(wildcard $(TEST_DIR)/*.c)
+TESTS_ISOLATED := $(removesuffix _test.c, $(notdir $(TESTS)))
+TEST_OBJECTS := $(patsubst $(TEST_DIR)/%.c, $(BUILD_TEST_DIR)/%.o, $(TESTS))
 
 # declare which rules generate no files
 .PHONY: run all clean lint
@@ -44,14 +50,36 @@ all: $(TARGET)
 $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) $^ -o $@ 
 
+# identical to rule below, but explicitly declared so main doesn't need a .h file
+$(BUILD_DIR)/main.o : $(SOURCE_DIR)/main.c
+	mkdir -p $(BUILD_DIR) $(DEP_DIR)
+	$(CC) $(CFLAGS) -MMD -MF $(DEP_DIR)/main.d -c $< -o $@
+
 # creates build directory and dependencies directory if necessary
 # creates all necessary .o files (and .d(directory) files)
 # -MMD -MF$(DEP_DIR)/$*.d creates and places all .d files into the DEP_DIR
 # $< references the first requirment
-
 $(BUILD_DIR)/%.o : $(SOURCE_DIR)/%.c $(INCLUDE_DIR)/%.h
 	mkdir -p $(BUILD_DIR) $(DEP_DIR)
 	$(CC) $(CFLAGS) -MMD -MF $(DEP_DIR)/$*.d -c $< -o $@
+
+
+ifdef testname
+test: $(BUILD_DIR)/$(testname).o $(BUILD_TEST_DIR)/$(testname)$(TESTFILE_SUFFIX).o
+	$(CC) $(CFLAGS) $^ -o $(BUILD_TEST_DIR)/$(testname)$(TESTFILE_SUFFIX) -lcunit
+	./$(BUILD_TEST_DIR)/$(testname)$(TESTFILE_SUFFIX)
+
+else
+test: # $(addsuffix $(TESTFILE_SUFFIX).o, $(addprefix $(BUILD_TEST_DIR)/, $(TESTS)))
+	@echo "Run command again and choose which test to run by adding testname= followed by the name of the alg such as insert_sort"
+endif
+
+# $(BUILD_TEST_DIR)/$(TESTS_ISOLATED)$(TESTFILE_SUFFIX): $(BUILD_TEST_DIR)/$(TESTS_ISOLATED)$(TESTFILE_SUFFIX).o $(OBJECTS)
+# 	$(CC) $(CFLAGS) $^ -o $@
+
+$(BUILD_TEST_DIR)/%.o : $(TEST_DIR)/%.c
+	mkdir -p $(BUILD_DIR) $(BUILD_TEST_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # removes all created files, specifically all those placed in BUILD_DIR as well as TARGET
 clean:
